@@ -77,7 +77,7 @@ const updateDepthOfTargets = (tree: any, curNode: any) => {
   }
 };
 
-const getNodesTree = ({ nodes, links }: any, width: number, nodeWidth: number): any => {
+const getNodesTree = ({ nodes, links }: any, width: number, nodeWidth: number, danglingLeaf: boolean): any => {
   const tree = nodes.map((entry: any, index: number) => {
     const result = searchTargetsAndSources(links, index);
 
@@ -96,6 +96,7 @@ const getNodesTree = ({ nodes, links }: any, width: number, nodeWidth: number): 
       updateDepthOfTargets(tree, node);
     }
   }
+
   const maxDepth = _.maxBy(tree, (entry: SankeyNode) => entry.depth).depth;
 
   if (maxDepth >= 1) {
@@ -103,7 +104,7 @@ const getNodesTree = ({ nodes, links }: any, width: number, nodeWidth: number): 
     for (let i = 0, len = tree.length; i < len; i++) {
       const node = tree[i];
 
-      if (!node.targetNodes.length) {
+      if (!danglingLeaf && !node.targetNodes.length) {
         node.depth = maxDepth;
       }
       node.x = node.depth * childWidth;
@@ -252,6 +253,7 @@ const computeData = ({
   iterations,
   nodeWidth,
   nodePadding,
+  danglingLeaf,
 }: {
   data: any;
   width: number;
@@ -259,12 +261,14 @@ const computeData = ({
   iterations: any;
   nodeWidth: number;
   nodePadding: number;
+  danglingLeaf: boolean | undefined;
 }): {
   nodes: SankeyNode[];
   links: SankeyLink[];
+  maxDepth: number;
 } => {
   const { links } = data;
-  const { tree } = getNodesTree(data, width, nodeWidth);
+  const { tree } = getNodesTree(data, width, nodeWidth, danglingLeaf);
   const depthTree = getDepthTree(tree);
   const newLinks = updateYOfTree(depthTree, height, nodePadding, links);
 
@@ -283,7 +287,7 @@ const computeData = ({
 
   updateYOfLinks(tree, newLinks);
 
-  return { nodes: tree, links: newLinks };
+  return { nodes: tree, links: newLinks, maxDepth: depthTree.length };
 };
 
 const getCoordinateOfTooltip = (el: any, type: string) => {
@@ -338,6 +342,8 @@ interface SankeyProps {
     links: SankeyLink[];
   };
 
+  danglingLeaf?: boolean;
+
   nodePadding?: number;
 
   nodeWidth?: number;
@@ -374,6 +380,7 @@ interface State {
   isTooltipActive: boolean;
   nodes: SankeyNode[];
   links: SankeyLink[];
+  maxDepth: number;
 }
 
 class Sankey extends PureComponent<Props, State> {
@@ -395,6 +402,7 @@ class Sankey extends PureComponent<Props, State> {
     isTooltipActive: false,
     nodes: [] as SankeyNode[],
     links: [] as SankeyLink[],
+    maxDepth: 0,
   };
 
   constructor(props: Props) {
@@ -405,7 +413,7 @@ class Sankey extends PureComponent<Props, State> {
 
   // eslint-disable-next-line camelcase
   UNSAFE_componentWillReceiveProps(nextProps: Props) {
-    const { data, width, height, margin, iterations, nodeWidth, nodePadding, nameKey } = this.props;
+    const { data, width, height, margin, iterations, nodeWidth, nodePadding, nameKey, danglingLeaf } = this.props;
     if (
       nextProps.data !== data ||
       nextProps.width !== width ||
@@ -414,7 +422,8 @@ class Sankey extends PureComponent<Props, State> {
       nextProps.iterations !== iterations ||
       nextProps.nodeWidth !== nodeWidth ||
       nextProps.nodePadding !== nodePadding ||
-      nextProps.nameKey !== nameKey
+      nextProps.nameKey !== nameKey ||
+      nextProps.danglingLeaf !== danglingLeaf
     ) {
       this.setState((this.constructor as any).createDefaultState(nextProps));
     }
@@ -426,16 +435,17 @@ class Sankey extends PureComponent<Props, State> {
    * @return {Object} Whole new state
    */
   static createDefaultState(props: Props): State {
-    const { data, width, height, margin, iterations, nodeWidth, nodePadding } = props;
+    const { data, width, height, margin, iterations, nodeWidth, nodePadding, danglingLeaf } = props;
     const contentWidth = width - ((margin && margin.left) || 0) - ((margin && margin.right) || 0);
     const contentHeight = height - ((margin && margin.top) || 0) - ((margin && margin.bottom) || 0);
-    const { links, nodes } = computeData({
+    const { links, nodes, maxDepth } = computeData({
       data,
       width: contentWidth,
       height: contentHeight,
       iterations,
       nodeWidth,
       nodePadding,
+      danglingLeaf,
     });
 
     return {
@@ -444,6 +454,7 @@ class Sankey extends PureComponent<Props, State> {
       isTooltipActive: false,
       nodes,
       links,
+      maxDepth,
     };
   }
 
@@ -522,6 +533,7 @@ class Sankey extends PureComponent<Props, State> {
 
   renderLinks(links: SankeyLink[], nodes: SankeyNode[]) {
     const { linkCurvature, link: linkContent, margin } = this.props;
+    const { maxDepth } = this.state;
     const top = _.get(margin, 'top') || 0;
     const left = _.get(margin, 'left') || 0;
 
@@ -551,6 +563,7 @@ class Sankey extends PureComponent<Props, State> {
             linkWidth,
             index: i,
             payload: { ...link, source, target },
+            maxDepth,
             ...filterProps(linkContent),
           };
           const events = {
@@ -583,6 +596,7 @@ class Sankey extends PureComponent<Props, State> {
 
   renderNodes(nodes: SankeyNode[]) {
     const { node: nodeContent, margin } = this.props;
+    const { maxDepth } = this.state;
     const top = _.get(margin, 'top') || 0;
     const left = _.get(margin, 'left') || 0;
 
@@ -598,6 +612,7 @@ class Sankey extends PureComponent<Props, State> {
             height: dy,
             index: i,
             payload: node,
+            maxDepth,
           };
           const events = {
             onMouseEnter: this.handleMouseEnter.bind(this, nodeProps, 'node'),
