@@ -177,6 +177,7 @@ function SankeyDemo() {
           iterations={64}
           link={<DemoSankeyLink />}
           node={<DemoSankeyNode containerWidth={960} />}
+          danglingLeaf
         >
           <defs>
             <linearGradient id={'linkGradient'}>
